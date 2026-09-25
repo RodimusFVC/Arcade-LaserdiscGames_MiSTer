@@ -37,6 +37,9 @@ module led_band #(
     // Dragon's Lair drives skill_en=0 and is then bit-identical to the pre- band.
     input             skill_en,          // 1 = Space Ace: render "D CAD/CAP/ACE" at the far right
     input       [1:0] skill,             // 0=none yet, 1=Cadet, 2=Captain, 3=Space Ace
+    // 1 = Thayer's Quest: two centred time digits + a left-hand hex diagnostic
+    // field, instead of the Dragon's Lair score/lives/credits scoreboard.
+    input             tq_mode,
     output            seg_lit
 );
     localparam FH = 7, PITCH = 6, N_SLOT = 33, N_SLOT_SKILL = 39;
@@ -97,9 +100,30 @@ module led_band #(
         default: begin sk0 = 5'd31; sk1 = 5'd31; sk2 = 5'd31; end   // not chosen yet -> blank
     endcase
 
+    // Hex for the diagnostic field: 0-9 use the normal codes, F uses its own glyph
+    // so that code 15 still means CLEAR/blank everywhere the GAME writes digits.
+    function [4:0] hexch(input [3:0] n);
+        hexch = (n == 4'hF) ? 5'd20 : {1'b0, n};
+    endfunction
+
     // slot -> character (font code).  Dynamic slots pull led_digits[].
     reg [4:0] ch;
-    always @* case (slot)
+    always @* if (tq_mode) case (slot)
+        // Thayer's Quest: the game drives only TWO digits (14,15) -- the remaining
+        // time -- so the Dragon's Lair scoreboard layout is meaningless here.
+        // Time is centred: 't' + 2 digits spans slots 15-18, centre 16.5, which is
+        // the exact centre of the 33-slot band.  Diagnostics live hard left and
+        // never overlap it.  Digits 0-7 are blanked by the game at $00FD and never
+        // written again, so the diagnostic field costs the game nothing.
+        6'd0:  ch = hexch(led_digits[ 0*4 +: 4]);   6'd1:  ch = hexch(led_digits[ 1*4 +: 4]);
+        6'd2:  ch = hexch(led_digits[ 2*4 +: 4]);   6'd3:  ch = hexch(led_digits[ 3*4 +: 4]);
+        6'd4:  ch = hexch(led_digits[ 4*4 +: 4]);   6'd5:  ch = hexch(led_digits[ 5*4 +: 4]);
+        6'd6:  ch = hexch(led_digits[ 6*4 +: 4]);   6'd7:  ch = hexch(led_digits[ 7*4 +: 4]);
+        6'd15: ch = 5'd19;                                                        // 't'
+        6'd16: ch = {1'b0, led_digits[14*4 +: 4]};  6'd17: ch = {1'b0, led_digits[15*4 +: 4]};
+        default: ch = 5'd31;                                                      // blank
+    endcase
+    else case (slot)
         6'd0:  ch = 5'd16;                             6'd1:  ch = 5'd1;                            // "P1"
         6'd3:  ch = {1'b0, led_digits[ 0*4 +: 4]};     6'd4:  ch = {1'b0, led_digits[ 1*4 +: 4]};
         6'd5:  ch = {1'b0, led_digits[ 2*4 +: 4]};     6'd6:  ch = {1'b0, led_digits[ 3*4 +: 4]};
@@ -171,6 +195,9 @@ module led_band #(
             5'd16: segmask = 7'b1100111; // P
             5'd17: segmask = 7'b0001110; // L
             5'd18: segmask = 7'b0000101; // r
+            5'd19: segmask = 7'b0001111; // t  (Thayer's TIME label; 'T' is not a 7-seg glyph)
+            5'd20: segmask = 7'b1000111; // F  for the hex diagnostic field only, so code 15
+                                         //    keeps meaning CLEAR/blank for the game's own digits
             default: segmask = 7'b0000000;
         endcase
     endfunction

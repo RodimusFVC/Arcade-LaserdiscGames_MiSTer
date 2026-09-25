@@ -54,6 +54,9 @@ module DragonsLair
     output        [63:0] led_digits_o,
     output         [1:0] skill_o,     // Space Ace skill level for the LED band
     output               dbg_led,
+    output         [7:0] dbg_ld_status,
+    output               dbg_d0_seen,
+    output        [19:0] dbg_seek_digits,
     output               ld_search_cmd_o, // Z80's CMD_SEARCH accepted (1-cyc)
     output               ld_play_end_o,   // playback stopped (1-cyc)
     output        [16:0] ld_frame_o,   // LD disc frame -> streamer
@@ -104,6 +107,9 @@ DragonsLair_CPU #(.CLK_HZ(CLK_HZ)) cpu_board   // thread the core clock down
     .led_digits_o(led_digits_o),
     .skill_o(skill_o),
     .dbg_led(dbg_led),
+    .dbg_ld_status(dbg_ld_status),
+    .dbg_d0_seen(dbg_d0_seen),
+    .dbg_seek_digits(dbg_seek_digits),
     .search_cmd_o(ld_search_cmd_o),
     .play_end_o(ld_play_end_o),
     .ld_frame_o(ld_frame_o),

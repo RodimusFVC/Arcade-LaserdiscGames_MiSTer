@@ -94,6 +94,11 @@ module DragonsLair_CPU
 
     // Bring-up "core alive" heartbeat LED
     output        dbg_led,
+    // Thayer's diagnostic field.  dbg_ld_status is LATCHED at the IN 0xF0 read, so
+    // it is the byte the ROM actually saw, not whatever the player shows right now.
+    output reg [7:0] dbg_ld_status,
+    output reg       dbg_d0_seen,      // sticky: status was EVER 0xD0 (ST_SEARCH_FIN)
+    output    [19:0] dbg_seek_digits,  // raw SEARCH digits as received, 5 nibbles
 
     // LDV1000 HLE current disc frame -> streamer video/audio position
     output        search_cmd_o,   // Z80's CMD_SEARCH accepted (1-cycle)
@@ -437,6 +442,16 @@ ldp_top #(.CLK_HZ(CLK_HZ)) u_ldp (   // thread the core clock down
 );
 
 // expose disc frame to the top (streamer maps -> mjpeg frame + audio sample)
+// Latch what the ROM read, and remember whether the player ever produced the
+// success code the boot loop is waiting for at $1DFD.
+always_ff @(posedge clk_sys) begin
+    if (!reset) begin dbg_ld_status <= 8'd0; dbg_d0_seen <= 1'b0; end
+    else begin
+        if (cs_tq_ldrd)              dbg_ld_status <= ld_status;
+        if (ld_status == 8'hD0)      dbg_d0_seen   <= 1'b1;
+    end
+end
+assign dbg_seek_digits = dbg_end_frame_w;
 assign ld_frame_o    = ld_curr_frame;
 assign ld_playing_o  = ld_playing_w;
 

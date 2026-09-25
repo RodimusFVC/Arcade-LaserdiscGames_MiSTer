@@ -651,6 +651,9 @@ DragonsLair #(.CLK_HZ(CORE_CLK_HZ)) dl_inst
 (
 	.rom_addr(dl_rom_a), .rom_data(prog_q),
 	.tq_keys(tq_keys),
+	.dbg_ld_status(dbg_ld_status_dl),
+	.dbg_d0_seen(dbg_d0_seen_dl),
+	.dbg_seek_digits(dbg_seek_digits_dl),
 	.reset(~reset & brd[BRD_DL]),   // active-low; held in reset while another board runs
 
 	.clk_sys(CLK_CORE),   // 80 MHz: Z80=/20=4MHz, AY=/40=2MHz (real-hardware speeds, dividers derived)
@@ -1032,7 +1035,39 @@ assign ld_playing_top    = brd[BRD_MACH3] ? ld_playing_m3: brd[BRD_DL2] ? ld_pla
 // falling through to Dragon's Lair's heartbeat.
 assign dbg_led           = brd[BRD_MACH3] ? 1'b0 : brd[BRD_DL2] ? 1'b0          : brd[BRD_CLIFF] ? dbg_led_cl    : brd[BRD_SDQ] ? dbg_led_sd    : dbg_led_dl;
 // The scoreboard band and the Space Ace skill select belong to the Dragon's Lair board only.
-assign led_digits_flat   = brd[BRD_DL] ? led_digits_dl : 64'd0;
+//------------------------------------------------------------------------------
+// Thayer's Quest diagnostic field.
+// The game drives only digits 14 and 15 (remaining time) and blanks 0-13 at boot
+// ($00FD), so the low eight are free real estate on a board that is mid-bring-up.
+// led_band renders slots 0-7 from them as HEX when tq_mode is set, hard left, with
+// the time centred and never overlapping.
+//
+//   slot 0,1 : LD status LATCHED at the IN $F0 read -- what the ROM actually saw.
+//              Boot waits for $D0 = ST_SEARCH_FIN at $1DFD.
+//   slot 2   : {search_cmd, play_end, D0_ever_seen, seek_hold}
+//   slot 3-7 : the raw SEARCH digits as our LD-V1000 received them.  The ROM enters
+//              696 as five BCD digits, so this should read 00696.
+//------------------------------------------------------------------------------
+wire  [7:0] dbg_ld_status_dl;
+wire        dbg_d0_seen_dl;
+wire [19:0] dbg_seek_digits_dl;
+reg        tq_seek_seen = 1'b0, tq_end_seen = 1'b0;
+always @(posedge CLK_CORE) begin
+	if (reset) begin tq_seek_seen <= 1'b0; tq_end_seen <= 1'b0; end
+	else begin
+		if (seek_pulse_dl) tq_seek_seen <= 1'b1;
+		if (play_end_dl)   tq_end_seen  <= 1'b1;
+	end
+end
+wire [31:0] tq_dbg_nib = { dbg_seek_digits_dl[3:0],   dbg_seek_digits_dl[7:4],
+                           dbg_seek_digits_dl[11:8],  dbg_seek_digits_dl[15:12],
+                           dbg_seek_digits_dl[19:16],
+                           {tq_seek_seen, tq_end_seen, dbg_d0_seen_dl, fb_seek_hold},
+                           dbg_ld_status_dl[3:0], dbg_ld_status_dl[7:4] };
+
+assign led_digits_flat   = brd[BRD_DL] ? (is_thayers ? {led_digits_dl[63:32], tq_dbg_nib}
+                                                     : led_digits_dl)
+                                       : 64'd0;
 assign skill_level       = brd[BRD_DL] ? skill_dl      : 2'd0;
 
 // Dragon's Lair / Space Ace / Thayer's Quest do not persist high scores, so there is no hiscore
@@ -1370,6 +1405,7 @@ led_band #(.X_START(16'd58), .SCALE_LOG2(2'd1), .X_START_SKILL(16'd22)) led_band
     .led_digits(led_digits_flat),   // real score/lives, restored
     .skill_en(is_spaceace),         // MRA mod byte, SA only
     .skill(skill_level),
+    .tq_mode(is_thayers),
     .seg_lit(led_lit)
 );
 
